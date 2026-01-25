@@ -22,11 +22,12 @@ const createTokenAndSaveCookies = async (userId, res) => {
 
         // Set the token in cookies
         res.cookie("jwt", token, {
-            httpOnly: true, // Changed to true for better security
-            secure: process.env.NODE_ENV === "production", // Only use secure in production
-            sameSite: process.env.NODE_ENV === "production" ? "none" : "lax", // Changed to none for cross-site requests in production
-            maxAge: 7 * 24 * 60 * 60 * 1000, // 7 days in milliseconds
-            path: "/" // Ensure cookie is available across all paths
+            httpOnly: true,
+            secure: true, // Always use secure in production
+            sameSite: "none", // Allow cross-site requests
+            maxAge: 7 * 24 * 60 * 60 * 1000, // 7 days
+            path: "/",
+            domain: process.env.COOKIE_DOMAIN || undefined
         });
 
         // Save the token in the user's document in the database

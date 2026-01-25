@@ -266,6 +266,7 @@ export const removeOrder = async (req, res) => {
 
         // Remove the order ID from the user's orders list
         await User.findByIdAndUpdate(userId, { $pull: { orders: orderId } });
+        await User.findByIdAndUpdate(userId, { $pull: { cart: orderId } });
 
         return res.status(200).json({ message: 'Order removed successfully' });
     } catch (error) {

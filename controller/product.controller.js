@@ -1,4 +1,6 @@
 import { Product } from "../models/productmodel.js";
+import { User } from "../models/usermodel.js";
+import { Order } from "../models/orderModel.js";
 import { v2 as cloudinary } from 'cloudinary';
 import mongoose from "mongoose";
 
@@ -6,7 +8,6 @@ export const createProduct = async (req, res) => {
     console.log("Request Body:", req.body);   // Log the body fields
     console.log("Request Files:", req.files); // Log the uploaded files
  
-    
 
     if (!req.files || Object.keys(req.files).length === 0) {
         return res.status(400).json({ message: "Product image is required" });
@@ -25,9 +26,25 @@ export const createProduct = async (req, res) => {
         about: typeof about,
         price: typeof price
     });
-    if (!title || !category || !about || price == null) { // Correctly check for null
-        return res.status(400).json({ message: "All fields are required" });
-    }
+// Check if title is missing or empty
+if (!title) {
+  return res.status(400).json({ message: "Title is required" });
+}
+
+// Check if category is missing or empty
+if (!category) {
+  return res.status(400).json({ message: "Category is required" });
+}
+
+// Check if about/description is missing or empty
+if (!about) {
+  return res.status(400).json({ message: "About field is required" });
+}
+
+// Check if price is missing (null or undefined)
+if (price === null || price === undefined) {
+  return res.status(400).json({ message: "Price is required" });
+}
 
     
     const adminName = req?.user?.name;
@@ -62,12 +79,64 @@ export const createProduct = async (req, res) => {
 
 export const deleteProduct = async (req, res) => {
     const { id } = req.params;
-    const product = await Product.findById(id);
-    if (!product) {
-        return res.status(400).json({ message: "Product not found" });
+    
+    try {
+        // Find the product first
+        const product = await Product.findById(id);
+        if (!product) {
+            return res.status(400).json({ message: "Product not found" });
+        }
+
+        // Step 1: Remove product from all users' carts
+        await User.updateMany(
+            { "cart.product": id },
+            { $pull: { "cart": { product: id } } }
+        );
+
+        // Step 2: Find all orders that contain this product
+        const ordersWithProduct = await Order.find({ "items.product": id });
+
+        // Step 3: Remove product from orders' items and handle order cleanup
+        for (const order of ordersWithProduct) {
+            // Remove the product item from the order
+            order.items = order.items.filter(item => item.product.toString() !== id);
+
+            // If no items left in order, delete the order and remove from user records
+            if (order.items.length === 0) {
+                // Remove order from buyer's orders
+                await User.findByIdAndUpdate(
+                    order.buyer,
+                    { $pull: { "orders": order._id } }
+                );
+
+                // Remove order from farmer's myOrders (if exists)
+                const farmer = await User.findOne({
+                    "myOrders.orderId": order._id
+                });
+                if (farmer) {
+                    farmer.myOrders = farmer.myOrders.filter(
+                        mo => mo.orderId.toString() !== order._id.toString()
+                    );
+                    await farmer.save();
+                }
+
+                // Delete the empty order
+                await Order.findByIdAndDelete(order._id);
+            } else {
+                // If order still has items, just save the updated order
+                await order.save();
+            }
+        }
+
+        // Step 4: Delete the product
+        await product.deleteOne();
+
+        res.status(200).json({ message: "Product deleted successfully and removed from all carts and orders" });
+
+    } catch (error) {
+        console.error("Error deleting product:", error);
+        return res.status(500).json({ message: "Something went wrong", error: error.message });
     }
-    await product.deleteOne();
-    res.status(200).json({ message: "Product deleted successfully" });
 };
 
 export const getAllProducts = async (req, res) => {
