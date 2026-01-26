@@ -2,6 +2,7 @@ import mongoose from 'mongoose';
 import { User } from '../models/usermodel.js'; // Import the User model
 import { Order } from '../models/orderModel.js'; // Import the Order model
 import { Product } from '../models/productmodel.js'; // Import the Order model
+import { Cart } from '../models/cartModel.js';
 
 // Create a new order based on the user's cart
 export const createOrder = async (req, res) => {
@@ -9,19 +10,20 @@ export const createOrder = async (req, res) => {
 
     try {
         // Fetch the user and populate their cart
-        const user = await User.findById(userId).populate('cart.product');
+        const user = await User.findById(userId);
+        const userCart=await Cart.find({user:userId});
         if (!user) {
             return res.status(404).json({ message: 'User not found' });
         }
 
         // Check if the cart is empty
-        if (!user.cart || user.cart.length === 0) {
+        if (!userCart) {
             return res.status(400).json({ message: 'Cart is empty' });
         }
 
         // Prepare items and calculate total amount
         const items = await Promise.all(
-            user.cart.map(async (item) => {
+            userCart.map(async (item) => {
                 const product = await Product.findById(item.product);
 
                 if (!product) {
@@ -49,9 +51,10 @@ export const createOrder = async (req, res) => {
 
         await order.save();
 
-        // Update user's orders and clear cart
-        user.orders.push(order._id);
-        user.cart = [];  // Clear the cart after placing the order
+        await Cart.deleteMany({
+            user:userId,
+            
+        })
         await user.save();
 
         return res.status(201).json({ order });
@@ -61,17 +64,19 @@ export const createOrder = async (req, res) => {
 };
 
 export const createSingleItemOrder = async (req, res) => {
-    const { userId, productId, quantity ,address} = req.body; // Extract userId, productId, and quantity from request body
+    const { userId, productId, quantity  ,address} = req.body; // Extract userId, productId, and quantity from request body
 
     try {
         // Fetch the user placing the order
-        const user = await User.findById(userId).populate('cart.product');
+        const user = await User.findById(userId);
         if (!user) {
             return res.status(404).json({ message: 'User not found' });
         }
-
         // Find the product in the user's cart
-        const item = user.cart.find(item => item.product._id.toString() === productId);
+        const item =await Cart.findOne({
+            productId:productId,
+            user:userId
+        })
         if (!item) {
             return res.status(400).json({ message: 'Product not found in cart' });
         }
@@ -91,9 +96,9 @@ export const createSingleItemOrder = async (req, res) => {
         const orderItem = {
             product: productId,
             quantity: quantity,
-            farmer: product.createdBy, // Assume 'farmer' is the field that references the user who created the product
-            price: product.price // Store the price of the product
+            price: product.price
         };
+
 
         const totalAmount = orderItem.price * quantity;
 
@@ -103,29 +108,11 @@ export const createSingleItemOrder = async (req, res) => {
             items: [orderItem], // Create an array with a single item
             totalAmount,
             address:address,
+            farmer: product.createdBy,
             status: 'Pending',
         });
 
         await order.save();
-
-        // Update user's orders
-        user.orders.push(order._id);
-        
-        // Update cart quantity or remove item if ordered fully
-        if (item.quantity > quantity) {
-            item.quantity -= quantity; // Reduce quantity in cart
-        } else {
-            user.cart = user.cart.filter(cartItem => cartItem.product.toString() !== productId); // Remove item from cart
-        }
-        
-        await user.save();
-
-        // Update myOrders in the farmer's record
-        const farmer = await User.findById(product.createdBy);
-        if (farmer && farmer.role === 'admin') {
-            farmer.myOrders.push({ orderId: order._id, userId });
-            await farmer.save();
-        }
 
         return res.status(201).json({ order });
     } catch (error) {
@@ -145,16 +132,26 @@ export const getUserOrders = async (req, res) => {
     }
 
     try {
-        const user = await User.findById(userId).populate({
-            path: 'orders',
-            populate: { path: 'items.product' }
-        });
+        const user = await User.findById(userId);
 
         if (!user) {
             return res.status(404).json({ message: 'User not found' });
         }
 
-        return res.status(200).json({ message: 'User orders fetched successfully', orders: user.orders });
+        const orders = await Order.find({ buyer: userId }).populate("items.product");
+
+        const safeOrders = orders.map(order => ({
+        ...order.toObject(),
+        items: Array.isArray(order.items) ? order.items : []
+        }));
+
+        return res.status(200).json({
+        message: 'User orders fetched successfully',
+        orders: safeOrders
+        });
+
+
+        //return res.status(200).json({ message: 'User orders fetched successfully', orders:orders });
     } catch (error) {
         return res.status(500).json({ message: error.message });
     }
@@ -178,11 +175,9 @@ export const getFarmerOrders = async (req, res) => {
         }
 
         // Populate orders based on the myOrders field
-        const orders = await Order.find({ _id: { $in: farmer.myOrders.map(order => order.orderId) } })
-            .populate({
-                path: 'items.product', // Populate product details in each order
-                model: 'Product',
-            });
+        const orders = await Order.find({
+            farmer:farmerId
+        }).populate('items.product');
 
         return res.status(200).json({ message: 'Farmer orders fetched successfully', orders });
     } catch (error) {
@@ -212,7 +207,7 @@ export const markOrderAsDelivered = async (req, res) => {
         }
 
         // Check if the order belongs to the farmer
-        const orderExists = farmer.myOrders.some(order => order.orderId.toString() === orderId);
+        const orderExists = Order.find({farmer:farmerId});
         
         if (!orderExists) {
             return res.status(404).json({ message: 'Order not found for this farmer' });
@@ -264,9 +259,6 @@ export const removeOrder = async (req, res) => {
         // Remove the order
         await Order.findByIdAndDelete(orderId);
 
-        // Remove the order ID from the user's orders list
-        await User.findByIdAndUpdate(userId, { $pull: { orders: orderId } });
-        await User.findByIdAndUpdate(userId, { $pull: { cart: orderId } });
 
         return res.status(200).json({ message: 'Order removed successfully' });
     } catch (error) {

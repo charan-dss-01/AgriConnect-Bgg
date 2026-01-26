@@ -35,11 +35,11 @@ const orderSchema = new mongoose.Schema(
             type: Date,
             default: Date.now,
         },
-        // farmer: {
-        //     type: mongoose.Schema.Types.ObjectId,
-        //     ref: "User", // Reference to the user who created the product (farmer/admin)
-        //     required: true,
-        // },
+        farmer: {
+            type: mongoose.Schema.Types.ObjectId,
+            ref: "User", // Reference to the user who created the product (farmer/admin)
+            required: true,
+        },
         address: {
             type: String,
             required: true,

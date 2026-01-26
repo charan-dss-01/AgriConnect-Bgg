@@ -3,6 +3,7 @@ import { User } from "../models/usermodel.js";
 import { Order } from "../models/orderModel.js";
 import { v2 as cloudinary } from 'cloudinary';
 import mongoose from "mongoose";
+import { Cart } from "../models/cartModel.js";
 
 export const createProduct = async (req, res) => {
     console.log("Request Body:", req.body);   // Log the body fields
@@ -37,16 +38,21 @@ if (!category) {
 }
 
 // Check if about/description is missing or empty
-if (!about) {
-  return res.status(400).json({ message: "About field is required" });
+if (!about || about.trim().length < 20) {
+  return res.status(400).json({
+    message: "About field is required and must be at least 20 characters long",
+  });
 }
+
 
 // Check if price is missing (null or undefined)
 if (price === null || price === undefined) {
   return res.status(400).json({ message: "Price is required" });
 }
 
-    
+    if(!req.user){
+        return res.status(400).json({ message: "user is required" });
+    }
     const adminName = req?.user?.name;
     const adminphoto = req?.user?.photo?.url;
     const createdBy = req?.user?._id;
@@ -88,45 +94,48 @@ export const deleteProduct = async (req, res) => {
         }
 
         // Step 1: Remove product from all users' carts
-        await User.updateMany(
-            { "cart.product": id },
-            { $pull: { "cart": { product: id } } }
-        );
+        await Cart.deleteMany({
+            productId:id
+        })
 
-        // Step 2: Find all orders that contain this product
-        const ordersWithProduct = await Order.find({ "items.product": id });
+        await Order.deleteMany({
+            "items.product":id,
+        })
 
-        // Step 3: Remove product from orders' items and handle order cleanup
-        for (const order of ordersWithProduct) {
-            // Remove the product item from the order
-            order.items = order.items.filter(item => item.product.toString() !== id);
+        // // Step 2: Find all orders that contain this product
+        // const ordersWithProduct = await Order.find({ "items.product": id });
 
-            // If no items left in order, delete the order and remove from user records
-            if (order.items.length === 0) {
-                // Remove order from buyer's orders
-                await User.findByIdAndUpdate(
-                    order.buyer,
-                    { $pull: { "orders": order._id } }
-                );
+        // // Step 3: Remove product from orders' items and handle order cleanup
+        // for (const order of ordersWithProduct) {
+        //     // Remove the product item from the order
+        //     order.items = order.items.filter(item => item.product.toString() !== id);
 
-                // Remove order from farmer's myOrders (if exists)
-                const farmer = await User.findOne({
-                    "myOrders.orderId": order._id
-                });
-                if (farmer) {
-                    farmer.myOrders = farmer.myOrders.filter(
-                        mo => mo.orderId.toString() !== order._id.toString()
-                    );
-                    await farmer.save();
-                }
+        //     // If no items left in order, delete the order and remove from user records
+        //     if (order.items.length === 0) {
+        //         // Remove order from buyer's orders
+        //         await User.findByIdAndUpdate(
+        //             order.buyer,
+        //             { $pull: { "orders": order._id } }
+        //         );
 
-                // Delete the empty order
-                await Order.findByIdAndDelete(order._id);
-            } else {
-                // If order still has items, just save the updated order
-                await order.save();
-            }
-        }
+        //         // Remove order from farmer's myOrders (if exists)
+        //         const farmer = await User.findOne({
+        //             "myOrders.orderId": order._id
+        //         });
+        //         if (farmer) {
+        //             farmer.myOrders = farmer.myOrders.filter(
+        //                 mo => mo.orderId.toString() !== order._id.toString()
+        //             );
+        //             await farmer.save();
+        //         }
+
+        //         // Delete the empty order
+        //         await Order.findByIdAndDelete(order._id);
+        //     } else {
+        //         // If order still has items, just save the updated order
+        //         await order.save();
+        //     }
+        // }
 
         // Step 4: Delete the product
         await product.deleteOne();

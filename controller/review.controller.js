@@ -1,9 +1,7 @@
 import { Review } from "../models/review.js";
 import { Product } from "../models/productmodel.js";
 import { User } from "../models/usermodel.js";
-
-// Submit a review
-import {Order} from "../models/orderModel.js"; // Import the Order model
+import {Order} from "../models/orderModel.js"; 
 
 export const createReview = async (req, res) => {
   try {
@@ -61,8 +59,6 @@ export const createReview = async (req, res) => {
 
 
 
-
-
 // Fetch reviews for a product
 export const getProductReviews = async (req, res) => {
   try {
@@ -79,7 +75,7 @@ export const getProductReviews = async (req, res) => {
   }
 };
 
-// Delete a review (optional)
+
 export const deleteReview = async (req, res) => {
   try {
     const { reviewId } = req.params;
