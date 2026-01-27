@@ -176,7 +176,7 @@ export const getMyProducts = async (req, res) => {
         const myProducts = await Product.find({ createdBy });
 
         if (!myProducts || myProducts.length === 0) {
-            return res.status(404).json({ message: "No products found for this user" });
+            return res.status(200).json({ message: "No products found for this user" });
         }
 
         res.status(200).json(myProducts);
