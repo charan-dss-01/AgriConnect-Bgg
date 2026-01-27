@@ -246,15 +246,24 @@ export const login = async (req, res) => {
     }
 };
 
-export const logout= (req,res)=>{
-    try{
-        res.clearCookie("jwt");
-        res.status(200).json({message:"User logged out successfully"});
-    }catch(error){
-        console.log(error);
-        return res.status(500).json({error:"Internal server error"});
-    }
-}
+export const logout = (req, res) => {
+  try {
+    res.clearCookie("jwt", {
+      httpOnly: true,
+      secure: true,
+      sameSite: "None",
+      path: "/",
+    });
+
+    return res.status(200).json({
+      message: "User logged out successfully",
+    });
+  } catch (error) {
+    console.log(error);
+    return res.status(500).json({ error: "Internal server error" });
+  }
+};
+
 
 export const getMyProfile = async(req,res)=>{
     const user= await req.user;
